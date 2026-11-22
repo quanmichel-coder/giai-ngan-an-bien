@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { moCsdl } from '../core/db.mjs';
 import { NAM } from '../core/hang-so.mjs';
 import { ghi } from '../nghiep-vu/nhap.mjs';
-import { dieuHanh } from '../nghiep-vu/tong-hop.mjs';
+import { dieuHanh, homNayVN } from '../nghiep-vu/tong-hop.mjs';
 import { docTep } from '../nguon/index.mjs';
 import * as gsheets from '../nguon/google-sheets.mjs';
 
@@ -28,7 +28,8 @@ const NGUOI_XUAT = { id: 0, username: 'cong-khai', role: 'kinhte' };
 export function xuatCongKhai(goi, ra, { luc = new Date(), nam = NAM } = {}) {
   const db = moCsdl(':memory:');
   ghi(db, goi, NGUOI_XUAT);
-  const dau = dieuHanh(db, { nam });
+  const hom_nay = homNayVN(luc);
+  const dau = dieuHanh(db, { nam, hom_nay });
   if (dau.trong) throw new Error(`Bảng chưa có số liệu giải ngân: ${dau.ly_do}`);
 
   // Chỉ xóa thư mục ra khi nó trống hoặc là trang công khai xuất lần trước — tránh lỡ tay xóa nhầm thư mục khác.
@@ -41,7 +42,7 @@ export function xuatCongKhai(goi, ra, { luc = new Date(), nam = NAM } = {}) {
 
   const tuan = dau.danh_muc_loc.tuan.map(t => t.id), nguon = dau.danh_muc_loc.nguon.map(n => n.id);
   for (const t of tuan) for (const n of nguon) {
-    const d = dieuHanh(db, { tuan: t, nguon: n, nam });
+    const d = dieuHanh(db, { tuan: t, nguon: n, nam, hom_nay });
     writeFileSync(join(ra, 'du-lieu', `${t}_${n}.json`), JSON.stringify(d));
   }
   const mucLuc = { nam, cap_nhat_luc: luc.toISOString(), mac_dinh: { tuan: tuan[0], nguon: 'tat-ca' }, tuan, nguon };

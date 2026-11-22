@@ -12,7 +12,7 @@ Trả lời ba câu hỏi điều hành: **đã giải ngân bao nhiêu so với
 | Chạy cho cả mạng cơ quan | Bấm đúp `Chay.command` (lần đầu tự chuyển dữ liệu từ bản v0.3 và in bảng đối chiếu) |
 | Mở trên máy này | Bấm đúp `Mo-trinh-duyet.command` → http://127.0.0.1:3090 |
 | Máy khác cùng mạng | Mở địa chỉ `http://<IP máy chủ>:3090` in trong cửa sổ chạy |
-| Kiểm thử tự động | Bấm đúp `Kiem-thu.command` (14 bài kiểm thử) |
+| Kiểm thử tự động | Bấm đúp `Kiem-thu.command` (16 bài kiểm thử) |
 | Tài khoản | `DB_PATH=… node src/cli/tai-khoan.mjs liet-ke \| them \| dat-mat-khau \| phan-cong \| khoa \| mo` |
 
 Tài khoản và mật khẩu chuyển nguyên từ bản v0.3. Vai trò: `kinhte` (Phòng Kinh tế), `bql` (Ban QLDA),

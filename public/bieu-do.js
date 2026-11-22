@@ -119,6 +119,56 @@ export function chuGiaiLuyKe(coTp) {
   return h('div', { class: 'chu-giai' }, muc.map(([k, t]) => h('span', {}, h('span', { class: `khoa ${k}` }), t)));
 }
 
+/**
+ * Biểu đồ 2 — Giải ngân phát sinh từng tuần (cột) so với nhịp đang có và nhịp cần.
+ * Cột xám; tuần đang xem màu nhấn. Vạch liền = nhịp 4 tuần gần nhất; vạch đứt = mức cần mỗi tuần.
+ */
+export function bieuDoTuan(khung, ds, cs, ky) {
+  khung.replaceChildren();
+  if (!ds.length) return;
+  const W = Math.max(320, Math.round(khung.clientWidth || 720)), hep = W < 560;
+  const H = hep ? 220 : 250, m = { l: hep ? 40 : 52, r: hep ? 96 : 132, t: 16, b: 28 };
+  const vach = [
+    { v: cs.nhip_gan_day, chu: `Nhịp 4 tuần ${trieu(cs.nhip_gan_day)}`, lop: 'bt-nhip' },
+    { v: cs.can_moi_tuan_nam, chu: `Cần đến 31/12 ${trieu(cs.can_moi_tuan_nam)}`, lop: 'bt-can' },
+    { v: cs.can_moi_tuan_thang, chu: `Cần đến hết T${ky.thang} ${trieu(cs.can_moi_tuan_thang)}`, lop: 'bt-can-thang' }
+  ].filter(x => x.v != null && x.v > 0);
+  const hi = Math.max(1, ...ds.map(x => x.phat_sinh), ...vach.map(x => x.v));
+  const buoc = buocDep(hi, 4), y1 = Math.ceil(hi / buoc) * buoc;
+  const Y = v => m.t + (1 - v / y1) * (H - m.t - m.b);
+  const bw = (W - m.l - m.r) / ds.length, X = i => m.l + i * bw;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', class: 'bd',
+    'aria-label': `Giải ngân phát sinh ${ds.length} tuần, so với nhịp 4 tuần gần nhất và mức cần mỗi tuần` });
+
+  const luoi = s('g', { class: 'bd-luoi' });
+  for (let v = 0; v <= y1 + 1; v += buoc)
+    luoi.append(s('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }), s('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end', class: 'bd-truc' }, trieu(v)));
+  const cach = Math.ceil(ds.length / (hep ? 6 : 12));
+  ds.forEach((x, i) => { if (i % cach === 0 || i === ds.length - 1) luoi.append(s('text', { x: X(i) + bw / 2, y: H - 8, 'text-anchor': 'middle', class: 'bd-truc' }, x.nhan)); });
+  svg.append(luoi);
+
+  ds.forEach((x, i) => {
+    const y = Y(x.phat_sinh), hh = Math.max(x.phat_sinh > 0 ? 1.5 : 0, H - m.b - y);
+    svg.append(s('rect', { x: X(i) + bw * 0.14, y: H - m.b - hh, width: Math.max(1, bw * 0.72), height: hh, rx: 2, class: x.period_id === ky.id ? 'bt-cot-nhan' : 'bt-cot' },
+      s('title', {}, `${x.nhan} (${ngayNgan(x.tu)}–${ngayNgan(x.den)}): ${trieu(x.phat_sinh)} triệu`)));
+  });
+
+  // Vạch tham chiếu + nhãn trực tiếp ở mép phải (giãn cách tối thiểu 14px)
+  const nhan = vach.map(x => ({ ...x, y: Y(x.v) })).sort((a, b) => a.y - b.y);
+  for (let i = 0; i < nhan.length; i++) nhan[i].ve = Math.max(nhan[i].y, i ? nhan[i - 1].ve + 14 : m.t);
+  for (const n of nhan) {
+    svg.append(s('line', { x1: m.l, x2: W - m.r, y1: n.y, y2: n.y, class: n.lop }));
+    svg.append(s('text', { x: W - m.r + 8, y: n.ve + 4, class: n.lop === 'bt-nhip' ? 'bd-nhan-nhan' : 'bd-nhan' }, hep ? n.chu.replace('Cần đến hết', 'Cần hết').replace('Cần đến', 'Cần').replace('Nhịp 4 tuần', 'Nhịp') : n.chu));
+  }
+  khung.append(svg);
+}
+
+export function chuGiaiTuan(cs, ky) {
+  const muc = [['bt-k-cot', 'Phát sinh trong tuần'], ['bt-k-nhip', 'Nhịp 4 tuần gần nhất'], ['bt-k-can', 'Cần mỗi tuần để hết KHV đến 31/12']];
+  if (cs.can_moi_tuan_thang > 0) muc.push(['bt-k-can-thang', `Cần mỗi tuần để đạt KH phường cuối T${ky.thang}`]);
+  return h('div', { class: 'chu-giai' }, muc.map(([k, t]) => h('span', {}, h('span', { class: `khoa ${k}` }), t)));
+}
+
 /** Biểu đồ nhỏ — phát sinh 12 tuần (cột xám, tuần đang xem màu nhấn) và vạch "cần mỗi tuần". */
 export function cotNho(ds, can) {
   const W = 168, H = 40, max = Math.max(...ds.map(x => x.phat_sinh), can || 0, 1), bw = W / ds.length;

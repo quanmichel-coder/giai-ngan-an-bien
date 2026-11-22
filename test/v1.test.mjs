@@ -232,12 +232,8 @@ test('Đăng nhập: báo rõ sai tên / sai mật khẩu / bộ gõ / tài kho�
   } finally { sv.close(); }
 });
 
-test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ, không lộ link bảng, không có chức năng ghi', async () => {
-  const { xuatCongKhai, TEP_GIAO_DIEN } = await import('../src/cli/xuat-cong-khai.mjs');
-  const { taoGoi } = await import('../src/nguon/goi.mjs');
-  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
-  const { tmpdir } = await import('node:os');
-  const { join } = await import('node:path');
+/** Dữ liệu giả: 2 dự án, 2 nguồn, mốc nền + 4 tuần (T26–T29), kế hoạch phường T7–T12. */
+function goiGia(taoGoi) {
   const tr = v => Math.round(v * 1e6);
   // Dữ liệu giả: 2 dự án, 2 nguồn, mốc nền + 4 tuần, kế hoạch phường T7–T12.
   const goi = taoGoi({ kenh: 'gsheets', ten_tep: 'Google Sheets (https://docs.google.com/spreadsheets/d/BI-MAT-KHONG-DUOC-LO)', sha256: 'x'.repeat(64), nam: 2026 });
@@ -250,6 +246,17 @@ test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ
   for (let m = 7; m <= 12; m++) for (const [id, khv] of [['DA01', 1000], ['DA02', 500]])
     goi.kich_ban.push({ set_id: 'PHUONG-2026', scope_kind: 'line', scope_id: id, month: m, amount: tr(100 + (khv - 100) * (m - 6) / 6), source_ref: 'x' });
 
+  return goi;
+}
+const tr = v => Math.round(v * 1e6);
+
+test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ, không lộ link bảng, không có chức năng ghi', async () => {
+  const { xuatCongKhai, TEP_GIAO_DIEN } = await import('../src/cli/xuat-cong-khai.mjs');
+  const { taoGoi } = await import('../src/nguon/goi.mjs');
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const goi = goiGia(taoGoi);
   const ra = join(mkdtempSync(join(tmpdir(), 'cong-khai-')), 'trang');
   try {
     const m = xuatCongKhai(goi, ra, { luc: new Date('2026-07-20T11:00:00Z') });
@@ -260,7 +267,7 @@ test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ
 
     const d = JSON.parse(readFileSync(join(ra, 'du-lieu', '2026-T29_tat-ca.json'), 'utf8'));
     const db = csdl({ napTep: false }); ghi(db, goi, KT);
-    assert.deepEqual(d, JSON.parse(JSON.stringify(dieuHanh(db, { tuan: '2026-T29' }))), 'số trên trang công khai = số của app nội bộ');
+    assert.deepEqual(d, JSON.parse(JSON.stringify(dieuHanh(db, { tuan: '2026-T29', hom_nay: '2026-07-20' }))), 'số trên trang công khai = số của app nội bộ');
     assert.equal(d.chi_so.luy_ke, tr(275));
 
     for (const f of readdirSync(join(ra, 'du-lieu')))
@@ -273,4 +280,45 @@ test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ
     xuatCongKhai(goi, ra);
     assert.throws(() => xuatCongKhai(goi, join(ra, 'du-lieu', '..', '..')), /không phải trang công khai/);
   } finally { rmSync(join(ra, '..'), { recursive: true, force: true }); }
+});
+
+test('Bảng điều khiển: độ tươi số liệu, hạn đề xuất, lý do cảnh báo, theo nguồn, so với tuần trước, hai phương án dự báo', async () => {
+  const { taoGoi } = await import('../src/nguon/goi.mjs');
+  const db = csdl({ napTep: false }); ghi(db, goiGia(taoGoi), KT);
+  // Số đến T29 (17/7); xem ngày 29/7 → T30 (20–24/7) đã qua mà chưa có số.
+  const d = dieuHanh(db, { hom_nay: '2026-07-29' });
+  assert.equal(d.do_tuoi.so_lieu_den, '2026-07-17');
+  assert.deepEqual(d.do_tuoi.tuan_thieu.map(t => t.id), ['2026-T30']);
+  assert.equal(d.do_tuoi.dang_xem_ky_cu, false);
+  assert.equal(dieuHanh(db, { tuan: '2026-T27', hom_nay: '2026-07-29' }).do_tuoi.dang_xem_ky_cu, true);
+  // Hạn đề xuất tính từ hôm nay, không lùi về quá khứ.
+  assert.ok(d.de_xuat.length && d.de_xuat.every(x => x.han === '2026-08-05'), 'hạn = hôm nay + 7 ngày');
+  for (const x of d.de_xuat) assert.ok(x.tom_tat && x.viec_ngan, `${x.quy_tac} thiếu tóm tắt / việc cần làm`);
+  // Dự án bị tô đỏ/vàng phải có lý do; dự án xanh thì không.
+  for (const x of d.du_an) assert.equal(x.muc === 'xanh', !x.ly_do.length, `${x.project_id}: mức ${x.muc}, lý do ${x.ly_do}`);
+  // DA01, DA02 cùng đứng im T29 (=0) → chưa đủ 3 tuần; DA02 còn T27 = 0 nên không tính liên tiếp.
+  // Theo nguồn: cộng lại bằng toàn phạm vi.
+  assert.deepEqual(d.theo_nguon.map(n => n.id), ['NSTP', 'PHANCAP']);
+  assert.equal(d.theo_nguon.reduce((a, n) => a + n.luy_ke, 0), d.chi_so.luy_ke);
+  assert.equal(d.theo_nguon.reduce((a, n) => a + n.khv, 0), d.chi_so.khv);
+  // So với tuần trước (T28): T29 không phát sinh → tăng 0 điểm.
+  assert.equal(d.chi_so.ky_truoc, 'Tuần 28');
+  assert.equal(d.chi_so.tang_ty_le, 0);
+  assert.equal(d.chi_so.con_lai, tr(1500 - 275));
+  // Nhịp bình quân từ T26: (275 − 200 mốc nền) / 4 tuần.
+  assert.equal(d.chi_so.so_tuan_tu_dau, 4);
+  assert.equal(Math.round(d.chi_so.nhip_tu_dau), tr(75 / 4));
+  assert.ok(d.chi_so.du_bao_tu_dau <= d.chi_so.khv);
+  assert.equal(d.phat_sinh_tuan.length, 4);
+  assert.equal(d.pham_vi.canh_bao_kb, null, 'không có kịch bản thành phố thì không cảnh báo KB1');
+});
+
+test('Bảng điều khiển: cảnh báo khi kịch bản thành phố cao hơn KHV của danh mục (KB1)', async () => {
+  const { taoGoi } = await import('../src/nguon/goi.mjs');
+  const goi = goiGia(taoGoi);
+  for (let m = 7; m <= 12; m++) goi.kich_ban.push({ set_id: 'TP-2026', scope_kind: 'source', scope_id: 'NSTP', month: m, amount: tr(150 * m), source_ref: 'x' });
+  const db = csdl({ napTep: false }); ghi(db, goi, KT);
+  const d = dieuHanh(db, { nguon: 'NSTP', hom_nay: '2026-07-20' });
+  assert.equal(d.pham_vi.canh_bao_kb.chenh, tr(1800 - 1000));
+  assert.match(d.pham_vi.canh_bao_kb.chu, /cao hơn tổng KHV/);
 });

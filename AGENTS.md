@@ -11,7 +11,7 @@ triệu đồng, dấu chấm phân cách nghìn, dấu phẩy thập phân (171
 
 - Node.js ≥ 22.5, không có thư viện ngoài (không `npm install`). Máy chủ thật: Mac mini, Node 24.
   Với Node 22 phải thêm `--experimental-sqlite`.
-- Kiểm thử: `node --experimental-sqlite --test test/*.test.mjs` (14 bài). Thiếu tệp
+- Kiểm thử: `node --experimental-sqlite --test test/*.test.mjs` (16 bài). Thiếu tệp
   `data/nguon-ban-chinh-thuc-02.10.2026.xlsx` thì 7 bài tự bỏ qua — tệp này có trên máy chủ,
   không đưa vào kho mã.
 - Chạy thử trên máy phát triển: `DB_PATH=/tmp/thu.sqlite PORT=3090 node --experimental-sqlite src/server.mjs`

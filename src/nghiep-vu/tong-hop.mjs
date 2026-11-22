@@ -91,7 +91,10 @@ function duBao(lk, nh, tuan, khv) {
   return { giua: tran(lk + nh.tb * tuan), thap: tran(lk + Math.max(0, nh.tb - nh.sd) * tuan), cao: tran(lk + (nh.tb + nh.sd) * tuan) };
 }
 
-export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM } = {}) {
+/** Ngày hôm nay theo giờ Việt Nam (YYYY-MM-DD), dù máy chạy ở múi giờ nào (GitHub chạy giờ UTC). */
+export const homNayVN = (luc = new Date()) => new Date(luc.getTime() + 7 * 3600e3).toISOString().slice(0, 10);
+
+export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM, hom_nay = homNayVN() } = {}) {
   const sl = docSoLieu(db, nam), f = phepTinh(sl), N = NGUONG;
   const tatCa = new Set(sl.dong.map(l => l.id));
   const daCo = sl.tuan.filter(p => f.coSo(tatCa, p.id));
@@ -136,6 +139,24 @@ export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM } 
     tuan_con_lai_thang: tuanThang, tuan_con_lai_nam: tuanNam
   };
 
+  // So với kỳ có số liệu liền trước
+  const kyTruoc = daCo.filter(p => p.id < ky.id).at(-1);
+  if (kyTruoc) {
+    const lkTruoc = f.luyKe(ids, kyTruoc.end_date);
+    Object.assign(chi_so, { ky_truoc: `Tuần ${Number(kyTruoc.id.slice(-2))}`, luy_ke_ky_truoc: lkTruoc,
+      ty_le_ky_truoc: tyLe(lkTruoc, khv), tang_ty_le: khv > 0 ? (luyKe - lkTruoc) / khv : null });
+  }
+  chi_so.con_lai = Math.max(0, khv - luyKe);
+  chi_so.can_gap_nhip = nhip > 0 && chi_so.can_moi_tuan_nam != null ? chi_so.can_moi_tuan_nam / nhip : null;
+
+  // Phương án dự báo thứ hai: nhịp bình quân từ đầu kỳ theo dõi (sau mốc nền) — ít nhạy với vài tuần gần đây.
+  const soTuanCoSo = daCo.filter(p => p.id <= ky.id).length;
+  const lkNen = sl.nen ? f.luyKe(ids, sl.nen.end_date) : 0;
+  const nhipTuDau = soTuanCoSo ? (luyKe - lkNen) / soTuanCoSo : 0;
+  const duBaoTuDau = Math.min(khv, luyKe + nhipTuDau * tuanNam);
+  Object.assign(chi_so, { nhip_tu_dau: nhipTuDau, so_tuan_tu_dau: soTuanCoSo, tuan_dau: daCo[0].id,
+    du_bao_tu_dau: duBaoTuDau, du_bao_tu_dau_ty_le: tyLe(duBaoTuDau, khv) });
+
   // ------------------------------------------------------- Đường lũy kế T6 → T12
   const duong = [];
   for (let t = 6; t <= 12; t++) {
@@ -151,6 +172,26 @@ export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM } 
 
   // Nhịp tuần (12 tuần gần nhất) – cho đường nhỏ trong thẻ
   const nhipTuan = daCo.filter(p => p.id <= ky.id).slice(-12).map(p => ({ period_id: p.id, nhan: `T${Number(p.id.slice(-2))}`, phat_sinh: f.phatSinh(ids, p.id) }));
+  const phatSinhTuan = daCo.filter(p => p.id <= ky.id).map(p => ({ period_id: p.id, nhan: `T${Number(p.id.slice(-2))}`, tu: p.start_date, den: p.end_date, phat_sinh: f.phatSinh(ids, p.id) }));
+
+  // Theo nguồn vốn (luôn đủ 3 nguồn, để so sánh ngang)
+  const theoNguon = sl.nguon.map(n => {
+    const ls = sl.dong.filter(l => l.source_id === n.id), nid = new Set(ls.map(l => l.id));
+    if (!ls.length) return null;
+    const k = ls.reduce((a, l) => a + l.plan_amount, 0), lk = f.luyKe(nid, den);
+    const p = f.kbPhuong(ls, m), t = f.kbThanhPho(ls, m);
+    return { id: n.id, ten: n.name, tp_giao: !!n.city_assigned, khv: k, luy_ke: lk, ty_le: tyLe(lk, k), con_lai: Math.max(0, k - lk),
+      phat_sinh: f.phatSinh(nid, ky.id), kb_phuong: p?.amount ?? null, dat_phuong: p ? tyLe(lk, p.amount) : null,
+      kb_tp: t?.amount ?? null, dat_tp: t ? tyLe(lk, t.amount) : null };
+  }).filter(Boolean);
+
+  // Độ "tươi" của số liệu: số đến ngày nào; tuần nào đã qua mà chưa có số.
+  const moiNhat = daCo.at(-1);
+  const do_tuoi = {
+    hom_nay, so_lieu_den: moiNhat.end_date, tuan_moi_nhat: `Tuần ${Number(moiNhat.id.slice(-2))}`, dang_xem_ky_cu: ky.id !== moiNhat.id,
+    tuan_thieu: sl.tuan.filter(p => p.end_date > moiNhat.end_date && p.end_date < hom_nay)
+      .map(p => ({ id: p.id, nhan: `Tuần ${Number(p.id.slice(-2))}`, tu: p.start_date, den: p.end_date }))
+  };
 
   // ------------------------------------------------------------- Bảng theo tháng
   const bang_thang = [];
@@ -185,8 +226,13 @@ export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM } 
   });
 
   const kyOut = { id: ky.id, nhan: `Tuần ${Number(ky.id.slice(-2))}`, tu: ky.start_date, den, thang: m, nam };
-  const { de_xuat, muc } = danhGia({ du_an, chi_so, ky: kyOut, nam, nguong: N, ten_pham_vi: tenNguon });
-  for (const d of du_an) d.muc = muc.get(d.project_id) || 'xanh';
+  const { de_xuat, muc } = danhGia({ du_an, chi_so, ky: kyOut, nam, nguong: N, ten_pham_vi: tenNguon, hom_nay });
+  const bacDx = { do: 2, vang: 1, xanh: 0 };
+  for (const d of du_an) {
+    d.muc = muc.get(d.project_id) || 'xanh';
+    // Lý do của mức cảnh báo: tóm tắt các quy tắc đã kích hoạt, nặng trước.
+    d.ly_do = de_xuat.filter(x => x.project_id === d.project_id && x.muc !== 'xanh').sort((a, b) => bacDx[b.muc] - bacDx[a.muc]).map(x => x.tom_tat);
+  }
   const thuTu = { do: 0, vang: 1, xanh: 2 };
   du_an.sort((a, b) => thuTu[a.muc] - thuTu[b.muc] || b.thieu - a.thieu || (a.ty_le ?? 0) - (b.ty_le ?? 0));
   chi_so.so_du_an = du_an.length;
@@ -200,9 +246,16 @@ export function dieuHanh(db, { tuan = 'moi-nhat', nguon = 'tat-ca', nam = NAM } 
       ten: tenNguon, so_du_an: du_an.length, so_dong_von: lines.length,
       ghi_chu_tp: lines.some(l => !l.city_assigned) && lines.some(l => l.city_assigned)
         ? 'Nguồn tăng thu dự toán do phường tự cân đối, thành phố không giao: phần này trong mốc "Kịch bản TP" lấy theo kế hoạch phường.'
-        : lines.every(l => !l.city_assigned) ? 'Thành phố không giao kịch bản cho nguồn này.' : ''
+        : lines.every(l => !l.city_assigned) ? 'Thành phố không giao kịch bản cho nguồn này.' : '',
+      // KB1: số thành phố giao cuối năm cao hơn tổng KHV các dòng vốn trong danh mục của phường.
+      canh_bao_kb: kbT12 && kbT12.amount - khv >= N.bo_qua_duoi_dong
+        ? { chenh: kbT12.amount - khv, kb_tp: kbT12.amount, khv,
+            chu: `Kịch bản thành phố đến 31/12 là ${Math.round(kbT12.amount / 1e6).toLocaleString('vi-VN')} triệu, cao hơn tổng KHV các dự án trong danh mục của phường (${Math.round(khv / 1e6).toLocaleString('vi-VN')} triệu) ${Math.round((kbT12.amount - khv) / 1e6).toLocaleString('vi-VN')} triệu: danh mục chưa phân bổ hết số vốn thành phố giao, nên dù giải ngân hết KHV vẫn không đạt kịch bản thành phố.` }
+        : null
     },
-    chi_so, duong_luy_ke: duong, diem_hien_tai: diemHienTai, nhip_tuan: nhipTuan, bang_thang, du_an, de_xuat,
-    nguong: { phien_ban: N.phien_ban }
+    chi_so, duong_luy_ke: duong, diem_hien_tai: diemHienTai, nhip_tuan: nhipTuan, phat_sinh_tuan: phatSinhTuan,
+    theo_nguon: theoNguon, do_tuoi, bang_thang, du_an, de_xuat,
+    nguong: { phien_ban: N.phien_ban, dat_ke_hoach_thang_do: N.dat_ke_hoach_thang_do, dat_ke_hoach_thang_vang: N.dat_ke_hoach_thang_vang,
+      so_tuan_dung_im: N.so_tuan_dung_im, du_bao_het_von_do: N.du_bao_het_von_do, du_bao_het_von_vang: N.du_bao_het_von_vang, so_tuan_tinh_nhip: N.so_tuan_tinh_nhip }
   };
 }
