@@ -3,9 +3,10 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 
 export class LoiNghiepVu extends Error {
-  constructor(msg, status = 400) { super(msg); this.status = status; }
+  /** `them`: thông tin phụ gửi kèm cho giao diện (ví dụ gợi ý tên đăng nhập). */
+  constructor(msg, status = 400, them = null) { super(msg); this.status = status; this.them = them; }
 }
-export const loi = (msg, status = 400) => { throw new LoiNghiepVu(msg, status); };
+export const loi = (msg, status = 400, them = null) => { throw new LoiNghiepVu(msg, status, them); };
 
 export function bamMatKhau(mk) {
   const salt = randomBytes(16).toString('hex');
@@ -21,15 +22,62 @@ const bam = t => createHash('sha256').update(t).digest('hex');
 const THOI_HAN = 8 * 3600 * 1000;   // một ngày làm việc
 const thatBai = new Map();           // username -> {n, den}
 
+const SO_LAN_TOI_DA = 5;
+const CO_DAU = /[^\x20-\x7e]/;   // ký tự ngoài bảng ASCII in được: thường do bộ gõ tiếng Việt đang bật
+
+/** Chuẩn hóa tên đăng nhập: bỏ khoảng trắng (cả ký tự vô hình khi dán), NFC, chữ thường. */
+export const chuanTen = s => String(s ?? '').normalize('NFC').replace(/[\s​-‍﻿]/g, '').toLowerCase();
+
+/** Khoảng cách sửa chữ (Levenshtein) — để gợi ý tên gần đúng khi gõ nhầm. */
+function khoangCach(a, b) {
+  let truoc = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const nay = [i];
+    for (let j = 1; j <= b.length; j++) nay[j] = Math.min(truoc[j] + 1, nay[j - 1] + 1, truoc[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    truoc = nay;
+  }
+  return truoc[b.length];
+}
+const boDau = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd');
+
+/** Tên đăng nhập đang hoạt động gần nhất với tên gõ sai (chỉ gợi ý khi đủ gần, tối đa một tên). */
+export function goiYTen(db, ten) {
+  const x = boDau(ten);
+  if (!x) return null;
+  let tot = null;
+  for (const { username } of db.prepare('SELECT username FROM users WHERE active=1').all()) {
+    const d = khoangCach(x, username);
+    const dauGiong = (username.startsWith(x) || x.startsWith(username)) && Math.abs(username.length - x.length) <= 3;
+    if ((d <= Math.max(1, Math.floor(username.length / 3)) || dauGiong) && (!tot || d < tot.d)) tot = { username, d };
+  }
+  return tot?.username || null;
+}
+
 export function dangNhap(db, username, password) {
-  const ten = String(username || '').trim().toLowerCase();
+  const ten = chuanTen(username);
+  const mk = String(password ?? '');
+  if (!ten || !mk) loi('Cần nhập tên đăng nhập và mật khẩu.', 400);
   const k = thatBai.get(ten);
-  if (k && k.n >= 5 && Date.now() < k.den) loi('Sai mật khẩu quá 5 lần. Thử lại sau 5 phút.', 429);
-  const u = db.prepare('SELECT * FROM users WHERE username=? AND active=1').get(ten);
-  if (!u || !dungMatKhau(password, u.password_hash)) {
+  if (k && k.n >= SO_LAN_TOI_DA && Date.now() < k.den) loi(`Sai mật khẩu quá ${SO_LAN_TOI_DA} lần. Thử lại sau 5 phút.`, 429);
+  const ghiSai = () => {
     const n = (k && Date.now() < k.den ? k.n : 0) + 1;
     thatBai.set(ten, { n, den: Date.now() + 5 * 60 * 1000 });
-    loi('Tên đăng nhập hoặc mật khẩu không đúng.', 401);
+    return SO_LAN_TOI_DA - n;
+  };
+  const u = db.prepare('SELECT * FROM users WHERE username=?').get(ten);
+  if (!u) {
+    ghiSai();
+    if (CO_DAU.test(ten)) loi(`Tên đăng nhập "${ten}" có chữ có dấu — bộ gõ tiếng Việt đang bật. Tắt bộ gõ (chuyển sang chữ ABC) rồi gõ lại.`, 401, { ly_do: 'bo_go' });
+    const g = goiYTen(db, ten);
+    loi(`Không có tài khoản "${ten}".` + (g ? ` Có phải "${g}"?` : ' Kiểm tra lại tên đăng nhập với Phòng Kinh tế.'), 401, { ly_do: 'sai_ten', goi_y: g });
+  }
+  if (!u.active) loi(`Tài khoản "${ten}" đã bị khóa. Liên hệ Phòng Kinh tế để mở lại.`, 403, { ly_do: 'khoa' });
+  if (!dungMatKhau(mk, u.password_hash)) {
+    const con = ghiSai();
+    const goiY = CO_DAU.test(mk)
+      ? ' Mật khẩu vừa gõ có chữ có dấu — bộ gõ tiếng Việt đang bật; tắt bộ gõ rồi gõ lại.'
+      : ' Kiểm tra phím Caps Lock và bộ gõ tiếng Việt.';
+    loi(`Mật khẩu không đúng.${goiY}` + (con > 0 ? ` Còn ${con} lần thử.` : ` Đã sai ${SO_LAN_TOI_DA} lần, thử lại sau 5 phút.`), 401, { ly_do: 'sai_mat_khau' });
   }
   thatBai.delete(ten);
   const token = randomBytes(32).toString('hex'), csrf = randomBytes(16).toString('hex');

@@ -101,6 +101,12 @@ export function taoUngDung(db, { https = false } = {}) {
     'GET /api/nhat-ky': ({ u }) => { canQuyen(u, 'xac_nhan'); return db.prepare('SELECT at,actor,entity,entity_id,action,reason FROM audit_log ORDER BY id DESC LIMIT 100').all(); }
   };
 
+  /** Thông tin công khai cho màn hình đăng nhập: đúng phần mềm, đúng cổng, đúng giao thức. */
+  const thongTinMayChu = req => {
+    const proto = https ? 'https' : 'http', cong = req.socket.localPort;
+    return { ban: 'v1', giao_thuc: proto, cong, dia_chi: [`${proto}://127.0.0.1:${cong}`, ...diaChiTrongMang(cong, proto)] };
+  };
+
   return async function xuLy(req, res) {
     const url = new URL(req.url, 'http://x');
     try {
@@ -113,7 +119,7 @@ export function taoUngDung(db, { https = false } = {}) {
       }
       const token = cookie(req)[tenCookie];
       const u = phienCua(db, token);
-      if (!u && url.pathname === '/api/toi') return guiJson(res, 200, { dang_nhap: false });
+      if (!u && url.pathname === '/api/toi') return guiJson(res, 200, { dang_nhap: false, may_chu: thongTinMayChu(req) });
       if (!u) loi('Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.', 401);
       if (req.method !== 'GET' && req.headers['x-csrf'] !== u.csrf) loi('Yêu cầu không hợp lệ (CSRF). Tải lại trang.', 403);
       const fn = tuyen[`${req.method} ${url.pathname}`];
@@ -124,7 +130,7 @@ export function taoUngDung(db, { https = false } = {}) {
     } catch (e) {
       const st = e instanceof LoiNghiepVu ? e.status : /Kỳ đã khóa|không được/.test(e.message) ? 409 : 500;
       if (st === 500) console.error(e);
-      guiJson(res, st, { loi: st === 500 ? 'Lỗi hệ thống. Chi tiết đã ghi ở cửa sổ máy chủ.' : e.message });
+      guiJson(res, st, { ...(st !== 500 && e.them ? e.them : {}), loi: st === 500 ? 'Lỗi hệ thống. Chi tiết đã ghi ở cửa sổ máy chủ.' : e.message });
     }
   };
 }
@@ -137,7 +143,7 @@ function tinh(path, res) {
 }
 
 export function diaChiTrongMang(port, proto = 'http') {
-  return Object.values(networkInterfaces()).flat().filter(n => n && n.family === 'IPv4' && !n.internal).map(n => `${proto}://${n.address}:${port}`);
+  return Object.values(networkInterfaces()).flat().filter(n => n && n.family === 'IPv4' && !n.internal && !n.address.startsWith('169.254.')).map(n => `${proto}://${n.address}:${port}`);
 }
 
 if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {

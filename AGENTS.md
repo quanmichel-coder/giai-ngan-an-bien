@@ -11,7 +11,7 @@ triệu đồng, dấu chấm phân cách nghìn, dấu phẩy thập phân (171
 
 - Node.js ≥ 22.5, không có thư viện ngoài (không `npm install`). Máy chủ thật: Mac mini, Node 24.
   Với Node 22 phải thêm `--experimental-sqlite`.
-- Kiểm thử: `node --experimental-sqlite --test test/*.test.mjs` (12 bài). Thiếu tệp
+- Kiểm thử: `node --experimental-sqlite --test test/*.test.mjs` (14 bài). Thiếu tệp
   `data/nguon-ban-chinh-thuc-02.10.2026.xlsx` thì 7 bài tự bỏ qua — tệp này có trên máy chủ,
   không đưa vào kho mã.
 - Chạy thử trên máy phát triển: `DB_PATH=/tmp/thu.sqlite PORT=3090 node --experimental-sqlite src/server.mjs`
@@ -35,8 +35,11 @@ src/nghiep-vu/kich-ban.mjs   Kịch bản phường (theo dòng vốn) và thàn
 src/nghiep-vu/viec.mjs       Vướng mắc – giải pháp – đầu mối – hạn – kết quả
 src/nghiep-vu/dong-bo.mjs    Tự đồng bộ Google Sheets 18:00 hằng ngày + nút bấm; số khác số cũ → chờ duyệt
 src/server.mjs               Định tuyến HTTP mỏng (/api/...), CSP chặt, cookie phiên + CSRF
-src/cli/                     chuyen-du-lieu (từ bản v0.3), tai-khoan, sao-luu
-public/                      SPA thuần: app.js (4 màn hình), bieu-do.js (SVG), dinh-dang.js, style.css
+src/cli/                     chuyen-du-lieu (từ bản v0.3), tai-khoan, sao-luu, xuat-cong-khai (trang công khai)
+public/                      SPA thuần: app.js (4 màn hình), man-dieu-hanh.js (màn hình Điều hành dùng chung),
+                             bieu-do.js (SVG), dinh-dang.js, style.css
+cong-khai/                   Trang báo cáo công khai chỉ đọc (index.html, cong-khai.js) — vẽ bằng man-dieu-hanh.js
+.github/workflows/           cong-khai.yml: mỗi 30 phút tải Google Sheets → kiểm thử → xuất → đăng GitHub Pages
 test/v1.test.mjs             Kiểm thử nghiệp vụ, phân quyền, HTTP, đồng bộ
 ```
 
@@ -62,7 +65,10 @@ thêm hàm vào `QUY_TAC` trong `de-xuat.mjs`; phân hệ mới = bảng trong `
    `src/nguon/google-sheets.mjs` tải bảng Google Sheets của cơ quan.
 2. **Không ghi đè âm thầm.** Số khác số đã có → giữ số cũ, chờ Phòng Kinh tế duyệt kèm lý do; kỳ đã khóa
    sổ không đổi; nhật ký chỉ ghi thêm, không sửa/xóa.
-3. **Chỉ mạng nội bộ.** Không mở cổng ra Internet, không ngrok / Cloudflare Tunnel / dịch vụ chia sẻ công cộng.
+3. **App nội bộ chỉ chạy trong mạng nội bộ.** Không mở cổng 3090 ra Internet, không ngrok / Cloudflare Tunnel.
+   Số liệu giải ngân là thông tin công khai (chủ dự án quyết định 22/11/2026): được đăng **trang chỉ đọc** lên
+   GitHub Pages qua `src/cli/xuat-cong-khai.mjs` + `.github/workflows/cong-khai.yml` (`docs/HUONG-DAN-CONG-KHAI.md`).
+   Trang công khai không có đăng nhập, nhập liệu hay link bảng; link bảng chỉ nằm trong secret `GSHEETS_URL`.
 4. **Tài khoản:** mỗi người một tài khoản; chuyển công tác thì khóa, không xóa. Không in, không ghi mật khẩu
    vào mã, log, tài liệu, kiểm thử hay câu trả lời.
 5. **CSDL đang chạy để ngoài OneDrive.** Khi thay tệp CSDL luôn xóa kèm `-wal` và `-shm`.

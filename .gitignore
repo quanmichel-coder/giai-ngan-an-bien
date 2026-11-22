@@ -8,3 +8,7 @@ data/sao-luu/
 _to_delete/
 node_modules/
 .DS_Store
+_site/
+# Link bảng Google Sheets thật — chỉ để trên máy chủ (mẫu: config/google-sheets.example.json)
+config/google-sheets.json
+*.xlsx

@@ -1,0 +1,51 @@
+# Trang báo cáo công khai (chỉ đọc) trên GitHub Pages.
+# Mỗi 30 phút trong giờ hành chính mở rộng (7:00–22:30 giờ Việt Nam), khi có mã mới, hoặc bấm "Run workflow":
+#   tải bảng Google Sheets → tính số bằng đúng mã của app nội bộ → đăng trang.
+# Link bảng để trong Settings → Secrets and variables → Actions → secret GSHEETS_URL (không nằm trong kho mã).
+# Lỗi tải/đọc bảng thì dừng trước khi đăng: trang cũ giữ nguyên.
+name: Trang công khai
+
+on:
+  schedule:
+    - cron: '*/30 0-15 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: trang-cong-khai
+  cancel-in-progress: false
+
+jobs:
+  xuat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Kiểm thử
+        run: node --test test/*.test.mjs
+      - name: Lấy số từ Google Sheets và xuất trang
+        env:
+          GSHEETS_URL: ${{ secrets.GSHEETS_URL }}
+          TZ: Asia/Ho_Chi_Minh
+        run: node src/cli/xuat-cong-khai.mjs _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  dang:
+    needs: xuat
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.trang.outputs.page_url }}
+    steps:
+      - id: trang
+        uses: actions/deploy-pages@v4

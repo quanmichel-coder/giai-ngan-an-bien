@@ -197,3 +197,80 @@ test('Google Sheets: tự cập nhật đúng một lần mỗi ngày lúc 18:00
   assert.equal(denHan(luc(4, 10).toISOString(), luc(5, 8)), true, 'hôm qua tắt máy lúc 18:00 → sáng nay mở máy lấy bù');
   assert.equal(mocGanNhat(luc(5, 8)).getDate(), 4);
 });
+
+test('Đăng nhập: báo rõ sai tên / sai mật khẩu / bộ gõ / tài khoản khóa, gợi ý tên gần đúng, cho biết địa chỉ máy chủ', async () => {
+  const db = csdl({ napTep: false });
+  db.prepare("INSERT INTO users(username,name,role,password_hash,active) VALUES('bqlda','Ban QLDA','bql',?,1),('kiemtra','Kiểm tra','lanhdao',?,0)")
+    .run(bamMatKhau('mat-khau-thu-4'), bamMatKhau('mat-khau-thu-5'));
+  const sv = createServer(taoUngDung(db)); await new Promise(r => sv.listen(0, '127.0.0.1', r));
+  const B = `http://127.0.0.1:${sv.address().port}`;
+  const dn = async (username, password) => { const r = await fetch(B + '/api/dang-nhap', { method: 'POST', body: JSON.stringify({ username, password }) }); return { st: r.status, j: await r.json() }; };
+  try {
+    const toi = await (await fetch(B + '/api/toi')).json();
+    assert.equal(toi.dang_nhap, false);
+    assert.equal(toi.may_chu.cong, sv.address().port);
+    assert.equal(toi.may_chu.giao_thuc, 'http');
+
+    let r = await dn('bqld', 'x');
+    assert.equal(r.st, 401); assert.equal(r.j.ly_do, 'sai_ten'); assert.equal(r.j.goi_y, 'bqlda');
+    r = await dn('qlda', 'x');
+    assert.equal(r.j.goi_y, 'bqlda', 'gõ thiếu chữ đầu vẫn gợi ý được');
+    r = await dn('xyzuvw', 'x');
+    assert.equal(r.j.ly_do, 'sai_ten'); assert.equal(r.j.goi_y, null, 'tên quá xa thì không gợi ý');
+    r = await dn('kinhtế', 'x');
+    assert.equal(r.j.ly_do, 'bo_go'); assert.match(r.j.loi, /bộ gõ tiếng Việt/);
+    assert.ok(!db.prepare("SELECT 1 FROM users WHERE username='kiemtra' AND active=1").get());
+    r = await dn('kiemtra', 'mat-khau-thu-5');
+    assert.equal(r.st, 403); assert.equal(r.j.ly_do, 'khoa');
+    r = await dn('bqlda', 'mật-khẩu');
+    assert.equal(r.st, 401); assert.equal(r.j.ly_do, 'sai_mat_khau'); assert.match(r.j.loi, /bộ gõ tiếng Việt/); assert.match(r.j.loi, /Còn 4 lần/);
+    r = await dn('  BQLDA​ ', 'mat-khau-thu-4');
+    assert.equal(r.st, 200, 'tên có khoảng trắng, chữ hoa, ký tự vô hình khi dán vẫn đăng nhập được');
+    assert.equal(r.j.user.username, 'bqlda');
+    r = await dn('', '');
+    assert.equal(r.st, 400);
+  } finally { sv.close(); }
+});
+
+test('Trang công khai: xuất đủ kỳ × nguồn, số khớp app nội bộ, không lộ link bảng, không có chức năng ghi', async () => {
+  const { xuatCongKhai, TEP_GIAO_DIEN } = await import('../src/cli/xuat-cong-khai.mjs');
+  const { taoGoi } = await import('../src/nguon/goi.mjs');
+  const { mkdtempSync, readdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const tr = v => Math.round(v * 1e6);
+  // Dữ liệu giả: 2 dự án, 2 nguồn, mốc nền + 4 tuần, kế hoạch phường T7–T12.
+  const goi = taoGoi({ kenh: 'gsheets', ten_tep: 'Google Sheets (https://docs.google.com/spreadsheets/d/BI-MAT-KHONG-DUOC-LO)', sha256: 'x'.repeat(64), nam: 2026 });
+  goi.dong_von = [
+    { line_id: 'DA01', project_id: 'DA01', source_id: 'NSTP', label: 'DA01 · Trường học', plan: tr(1000), source_ref: 'DU_AN!H5' },
+    { line_id: 'DA02', project_id: 'DA02', source_id: 'PHANCAP', label: 'DA02 · Đường phố', plan: tr(500), source_ref: 'DU_AN!H6' }];
+  goi.moc_nen = goi.dong_von.map(l => ({ line_id: l.line_id, amount: tr(100), as_of: '2026-06-19', source_ref: 'NHAP_LIEU!D8' }));
+  for (const [ky, a, b] of [['2026-T26', 10, 5], ['2026-T27', 20, 0], ['2026-T28', 30, 10], ['2026-T29', 0, 0]])
+    goi.giai_ngan.push({ line_id: 'DA01', period_id: ky, amount: tr(a), source_ref: 'x' }, { line_id: 'DA02', period_id: ky, amount: tr(b), source_ref: 'x' });
+  for (let m = 7; m <= 12; m++) for (const [id, khv] of [['DA01', 1000], ['DA02', 500]])
+    goi.kich_ban.push({ set_id: 'PHUONG-2026', scope_kind: 'line', scope_id: id, month: m, amount: tr(100 + (khv - 100) * (m - 6) / 6), source_ref: 'x' });
+
+  const ra = join(mkdtempSync(join(tmpdir(), 'cong-khai-')), 'trang');
+  try {
+    const m = xuatCongKhai(goi, ra, { luc: new Date('2026-07-20T11:00:00Z') });
+    assert.deepEqual(m.tuan, ['2026-T29', '2026-T28', '2026-T27', '2026-T26']);
+    assert.deepEqual(m.nguon, ['tat-ca', 'NSTP', 'PHANCAP', 'TANGTHU']);
+    assert.equal(readdirSync(join(ra, 'du-lieu')).length, 1 + 4 * 4);
+    for (const [, ten] of TEP_GIAO_DIEN) assert.ok(existsSync(join(ra, ten)), `thiếu ${ten}`);
+
+    const d = JSON.parse(readFileSync(join(ra, 'du-lieu', '2026-T29_tat-ca.json'), 'utf8'));
+    const db = csdl({ napTep: false }); ghi(db, goi, KT);
+    assert.deepEqual(d, JSON.parse(JSON.stringify(dieuHanh(db, { tuan: '2026-T29' }))), 'số trên trang công khai = số của app nội bộ');
+    assert.equal(d.chi_so.luy_ke, tr(275));
+
+    for (const f of readdirSync(join(ra, 'du-lieu')))
+      assert.ok(!readFileSync(join(ra, 'du-lieu', f), 'utf8').includes('docs.google.com'), `${f} lộ link bảng`);
+    for (const f of ['index.html', 'cong-khai.js', 'man-dieu-hanh.js']) {
+      const src = readFileSync(join(ra, f), 'utf8');
+      assert.ok(!src.includes('/api/') && !src.includes('docs.google.com'), `${f} không được gọi máy chủ nội bộ hay Google`);
+    }
+    // Xuất lại vào đúng thư mục cũ được; thư mục lạ có tệp khác thì từ chối, không xóa.
+    xuatCongKhai(goi, ra);
+    assert.throws(() => xuatCongKhai(goi, join(ra, 'du-lieu', '..', '..')), /không phải trang công khai/);
+  } finally { rmSync(join(ra, '..'), { recursive: true, force: true }); }
+});

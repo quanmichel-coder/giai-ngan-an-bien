@@ -4,7 +4,7 @@
 
 | Hạng mục | Trạng thái |
 | --- | --- |
-| Bản v1 (thư mục `Giai-Ngan-v1`, cổng 3090) | Hoàn thành, 12/12 kiểm thử đạt. Chạy song song bản v0.3 (cổng 3086). |
+| Bản v1 (thư mục `Giai-Ngan-v1`, cổng 3090) | Hoàn thành, 12/12 kiểm thử đạt (nay 13 bài, thêm bài đăng nhập). Chạy song song bản v0.3 (cổng 3086). |
 | Nhập liệu | Tệp Excel bảng điều hành, CSV mẫu chuẩn, nhập tay theo dự án, **Google Sheets tự đồng bộ 18:00 hằng ngày** + nút "Cập nhật từ Google Sheets" ở màn hình Điều hành. |
 | Bảng Google Sheets | Đã cập nhật theo QĐ 4800/QĐ-UBND ngày 11/11/2026 (thành phố điều chỉnh vốn 6 dự án NSTP) và QĐ 2232/QĐ-UBND ngày 30/10/2026 (phường điều chỉnh lần 4): 22 dòng vốn / 18 dự án, KIEM_TRA PASS. Số liệu đến hết **Tuần 46 (13/11/2026)**. |
 | Báo cáo Phòng Kinh tế | Làm thủ công (Word, thể thức NĐ 30/2020): `Bao-cao-giai-ngan-DTC-2026-tuan-46-ten-day-du.docx`. |

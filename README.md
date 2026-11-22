@@ -12,7 +12,7 @@ Trả lời ba câu hỏi điều hành: **đã giải ngân bao nhiêu so với
 | Chạy cho cả mạng cơ quan | Bấm đúp `Chay.command` (lần đầu tự chuyển dữ liệu từ bản v0.3 và in bảng đối chiếu) |
 | Mở trên máy này | Bấm đúp `Mo-trinh-duyet.command` → http://127.0.0.1:3090 |
 | Máy khác cùng mạng | Mở địa chỉ `http://<IP máy chủ>:3090` in trong cửa sổ chạy |
-| Kiểm thử tự động | Bấm đúp `Kiem-thu.command` (10 bài kiểm thử) |
+| Kiểm thử tự động | Bấm đúp `Kiem-thu.command` (14 bài kiểm thử) |
 | Tài khoản | `DB_PATH=… node src/cli/tai-khoan.mjs liet-ke \| them \| dat-mat-khau \| phan-cong \| khoa \| mo` |
 
 Tài khoản và mật khẩu chuyển nguyên từ bản v0.3. Vai trò: `kinhte` (Phòng Kinh tế), `bql` (Ban QLDA),
@@ -27,6 +27,11 @@ trong `src/core/hang-so.mjs`), và lấy ngay khi bấm nút **Cập nhật từ
 giữ số cũ, hiện danh sách chờ để Phòng Kinh tế *Duyệt* (kèm lý do) hoặc *Bỏ qua*. Kỳ đã khóa sổ không bị đổi.
 Bảng phải giữ bố cục tệp Excel bảng điều hành (sheet NHAP_LIEU + DU_AN) và bật chia sẻ
 "Bất kỳ ai có đường liên kết – Người xem". Sau khi cập nhật phần mềm: bấm đúp `Khoi-dong-lai.command`.
+
+## Trang báo cáo công khai (xem mọi lúc, mọi nơi)
+
+Bản chỉ đọc của màn hình Điều hành, đặt trên GitHub Pages, tự lấy số từ Google Sheets mỗi 30 phút
+(7:00–22:30), không cần đăng nhập, không có nhập liệu. Cài đặt: `docs/HUONG-DAN-CONG-KHAI.md`.
 
 ## Cấu trúc
 

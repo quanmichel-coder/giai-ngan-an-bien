@@ -178,7 +178,16 @@ td input.o-nhap { width: 120px; text-align: right; }
 .dang-nhap { max-width: 380px; margin: 10vh auto; }
 .dang-nhap form { display: grid; gap: 12px; }
 .dang-nhap label { display: grid; gap: 4px; font-size: 13px; }
+.dang-nhap label.ghi-chu { display: flex; align-items: center; gap: 6px; }
+.dang-nhap .canh-bao { margin: -6px 0 0; color: var(--canh-chu); font-weight: 600; }
+.dang-nhap .dia-chi { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--vien); }
+.dang-nhap .dia-chi p { margin: 4px 0; }
+.dang-nhap .dia-chi code { user-select: all; }
+[hidden] { display: none !important; }
 
 /* Thanh cập nhật từ Google Sheets (đầu màn hình Điều hành) */
 .thanh-dong-bo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; background: var(--mat); border: 1px solid var(--vien); border-radius: 10px; }
 .dong-bo-kq { flex-basis: 100%; color: var(--chu); }
+
+/* Trang công khai (cong-khai/) */
+.chan-cong-khai { max-width: 1280px; margin: -24px auto 24px; padding: 0 20px; }

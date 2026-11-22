@@ -1,6 +1,6 @@
 // Giao diện bản tối giản v1 — bốn màn hình: Điều hành · Nhập liệu · Kịch bản · Giải pháp.
 import { h, trieu, trieuDau, phanTram, ngayVN, ngayNgan, chipMuc, chip } from './dinh-dang.js';
-import { bieuDoLuyKe, chuGiaiLuyKe, cotNho, thanhTienDo } from './bieu-do.js';
+import { veDieuHanhVao } from './man-dieu-hanh.js';
 
 const app = document.getElementById('app');
 const S = { toi: null, csrf: '', dm: null, man: 'dieu-hanh', loc: { tuan: 'moi-nhat', nguon: 'tat-ca' } };
@@ -9,7 +9,7 @@ async function api(method, path, body) {
   const r = await fetch(path, { method, headers: { 'Content-Type': 'application/json', 'X-CSRF': S.csrf }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (r.status === 401 && path !== '/api/dang-nhap') { S.toi = null; veDangNhap(j.loi); throw new Error(j.loi); }
-  if (!r.ok) throw new Error(j.loi || `Lỗi ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(j.loi || `Lỗi ${r.status}`), { du_lieu: j });
   return j;
 }
 const thongBao = (chu, loi = false) => h('div', { class: `thong-bao${loi ? ' loi' : ''}`, role: loi ? 'alert' : 'status' }, chu);
@@ -20,22 +20,45 @@ const quyen = viec => ({
 
 // ------------------------------------------------------------------------- Đăng nhập & khung
 function veDangNhap(loi) {
-  const tb = h('div');
+  const tb = h('div', { 'aria-live': 'polite' });
   if (loi) tb.append(thongBao(loi, true));
+  const capsLock = h('p', { class: 'ghi-chu canh-bao', hidden: true }, 'Phím Caps Lock đang bật — mật khẩu sẽ bị gõ thành chữ hoa.');
+  const xemCaps = e => { if (e.getModifierState) capsLock.hidden = !e.getModifierState('CapsLock'); };
   const f = h('form', {
     onsubmit: async e => {
       e.preventDefault(); tb.replaceChildren();
       try {
         const r = await api('POST', '/api/dang-nhap', { username: f.username.value, password: f.password.value });
         S.toi = r.user; S.csrf = r.csrf; await batDau();
-      } catch (er) { tb.replaceChildren(thongBao(er.message, true)); }
+      } catch (er) {
+        tb.replaceChildren(thongBao(er.message, true));
+        const g = er.du_lieu?.goi_y;
+        if (g) tb.append(h('button', { type: 'button', class: 'phu nho', onclick: () => { f.username.value = g; tb.replaceChildren(); f.password.focus(); } }, `Dùng tên "${g}"`));
+        if (er.du_lieu?.ly_do === 'sai_mat_khau') { f.password.value = ''; f.password.focus(); }
+      }
     }
   },
-    h('label', {}, 'Tên đăng nhập', h('input', { type: 'text', name: 'username', autocomplete: 'username', required: true, autocapitalize: 'off' })),
-    h('label', {}, 'Mật khẩu', h('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true })),
+    h('label', {}, 'Tên đăng nhập', h('input', { type: 'text', name: 'username', autocomplete: 'username', required: true, autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' })),
+    h('label', {}, 'Mật khẩu', h('input', { type: 'password', name: 'password', autocomplete: 'current-password', required: true, onkeydown: xemCaps, onkeyup: xemCaps })),
+    capsLock,
     h('label', { class: 'ghi-chu' }, h('input', { type: 'checkbox', onchange: e => { f.password.type = e.target.checked ? 'text' : 'password'; } }), ' Hiện mật khẩu (kiểm tra bộ gõ tiếng Việt đã tắt)'),
     h('button', { class: 'chinh', type: 'submit' }, 'Đăng nhập'), tb);
-  app.replaceChildren(h('div', { class: 'the dang-nhap' }, h('h2', {}, 'Hệ thống quản lý giải ngân vốn đầu tư công'), h('p', { class: 'phu' }, 'UBND phường An Biên · chỉ dùng trong mạng nội bộ'), f));
+  app.replaceChildren(h('div', { class: 'the dang-nhap' },
+    h('h2', {}, 'Hệ thống quản lý giải ngân vốn đầu tư công'),
+    h('p', { class: 'phu' }, 'UBND phường An Biên · chỉ dùng trong mạng nội bộ'),
+    f, huongDanDiaChi()));
+  f.username.focus();
+}
+
+/** Khối "đang mở đúng chỗ chưa": phiên bản, cổng, giao thức, địa chỉ cho máy khác — chống vào nhầm bản v0.3. */
+function huongDanDiaChi() {
+  const m = S.mayChu;
+  if (!m) return null;
+  const lan = m.dia_chi.filter(d => !d.includes('127.0.0.1'));
+  return h('div', { class: 'dia-chi ghi-chu' },
+    h('p', {}, h('strong', {}, `Bản v1 · cổng ${m.cong} · ${m.giao_thuc === 'https' ? 'kết nối bảo mật (https)' : 'http'}`)),
+    lan.length ? h('p', {}, 'Máy khác trong mạng cơ quan mở: ', ...lan.flatMap((d, i) => [i ? ' hoặc ' : '', h('code', {}, d)])) : null,
+    h('p', {}, 'Tài khoản và mật khẩu chuyển từ bản cũ v0.3 (cổng 3086) tại thời điểm chuyển dữ liệu; đổi mật khẩu ở bản cũ sau đó không áp dụng sang bản này. Quên mật khẩu: trên máy chủ bấm đúp Dat-lai-mat-khau.command.'));
 }
 
 const MAN = [['dieu-hanh', 'Điều hành'], ['nhap', 'Nhập liệu'], ['kich-ban', 'Kịch bản'], ['giai-phap', 'Giải pháp']];
@@ -55,7 +78,7 @@ function veKhung() {
 }
 
 async function batDau() {
-  try { const t = await api('GET', '/api/toi'); if (t.dang_nhap === false) return veDangNhap(); S.toi = t; S.csrf = t.csrf; } catch { return veDangNhap(); }
+  try { const t = await api('GET', '/api/toi'); if (t.dang_nhap === false) { S.mayChu = t.may_chu; return veDangNhap(); } S.toi = t; S.csrf = t.csrf; } catch { return veDangNhap(); }
   S.dm = await api('GET', '/api/danh-muc');
   veKhung();
 }
@@ -66,114 +89,22 @@ async function veDieuHanh() {
   try { d = await api('GET', `/api/dieu-hanh?tuan=${encodeURIComponent(S.loc.tuan)}&nguon=${encodeURIComponent(S.loc.nguon)}`); }
   catch (e) { return noiDung.replaceChildren(thongBao(e.message, true)); }
   if (d.trong) return noiDung.replaceChildren(thongBao(d.ly_do + ' Vào "Nhập liệu" để nạp số liệu.'));
-  const cs = d.chi_so, k = d.ky;
 
-  // Bộ lọc
-  const chonTuan = h('select', { onchange: e => { S.loc.tuan = e.target.value; veDieuHanh(); } },
-    d.danh_muc_loc.tuan.map(t => h('option', { value: t.id, selected: t.id === d.bo_loc.tuan }, t.nhan)));
-  const loc = h('div', { class: 'loc' },
-    h('label', {}, 'Kỳ báo cáo', chonTuan),
-    h('div', { role: 'group', 'aria-label': 'Nguồn vốn' }, h('div', { class: 'ghi-chu' }, 'Nguồn vốn'),
-      h('div', { class: 'phan-doan' }, d.danh_muc_loc.nguon.map(n => h('button', { 'aria-pressed': String(n.id === d.bo_loc.nguon), onclick: () => { S.loc.nguon = n.id; veDieuHanh(); } }, n.nhan.replace('Ngân sách', 'NS'))))),
-    h('div', { class: 'pham-vi' }, `${d.pham_vi.so_du_an} dự án · ${d.pham_vi.so_dong_von} dòng vốn · số liệu đến ${ngayVN(k.den)}`));
-
-  // Hàng chỉ số: một số chính + bốn ô so sánh
-  const oSo = (nhan, so, moTa, lop = '', them) => h('div', { class: `o-so ${lop}` }, h('div', { class: 'nhan' }, nhan), so, moTa && h('div', { class: 'mo-ta' }, moTa), them);
-  const soCo = (v, donVi = 'triệu') => h('div', { class: `so ${v < 0 ? 'so-am' : v > 0 ? 'so-duong' : ''}` }, trieuDau(v), h('small', {}, donVi));
-  const meter = h('div', { class: 'meter', 'aria-hidden': 'true' }, h('span'));
-  meter.firstChild.style.width = `${Math.min(100, (cs.ty_le || 0) * 100)}%`;
-  const hang = h('div', { class: 'hang-chi-so' },
-    oSo('Tỷ lệ giải ngân so với kế hoạch vốn năm', h('div', { class: 'so' }, phanTram(cs.ty_le)), `${trieu(cs.luy_ke)} / ${trieu(cs.khv)} triệu · ${k.nhan.toLowerCase()} phát sinh ${trieu(cs.phat_sinh)} triệu`, 'chinh', meter),
-    oSo(`So với kế hoạch phường cuối T${k.thang}`, cs.chenh_phuong == null ? h('div', { class: 'so mo' }, '–') : soCo(cs.chenh_phuong),
-      cs.dat_phuong == null ? 'Chưa có kế hoạch tháng' : `Đạt ${phanTram(cs.dat_phuong)} mục tiêu ${trieu(cs.kb_phuong_thang)} triệu`),
-    oSo(`So với kịch bản thành phố cuối T${k.thang}`, cs.chenh_tp == null ? h('div', { class: 'so mo' }, '–') : soCo(cs.chenh_tp),
-      cs.dat_tp == null ? 'Thành phố không giao cho phạm vi này' : `Đạt ${phanTram(cs.dat_tp)} mục tiêu ${trieu(cs.kb_tp_thang)} triệu`),
-    oSo(`Cần mỗi tuần đến hết T${k.thang}`, h('div', { class: 'so' }, trieu(cs.can_moi_tuan_thang), h('small', {}, 'triệu/tuần')),
-      `${cs.tuan_con_lai_thang} tuần còn lại · nhịp 4 tuần gần nhất ${trieu(cs.nhip_gan_day)}`, '', cotNho(d.nhip_tuan, cs.can_moi_tuan_thang)),
-    oSo('Dự báo 31/12 theo nhịp hiện tại', h('div', { class: 'so' }, cs.du_bao_du_ky ? phanTram(cs.du_bao_ty_le) : '–', h('small', {}, 'KHV')),
-      cs.du_bao_du_ky ? `${trieu(cs.du_bao_cuoi_nam)} triệu · khoảng ${trieu(cs.du_bao_thap)}–${trieu(cs.du_bao_cao)}` : 'Chưa đủ 3 kỳ số liệu để dự báo'));
-
-  // Biểu đồ lũy kế + bảng tháng
-  const thieuThang = cs.chenh_phuong != null && cs.chenh_phuong < 0;
-  const tieuDeA = thieuThang
-    ? `Còn thiếu ${trieu(-cs.chenh_phuong)} triệu để đạt kế hoạch phường cuối T${k.thang}; theo nhịp hiện tại cuối năm đạt ${phanTram(cs.du_bao_ty_le)} KHV`
-    : `Đang vượt kế hoạch phường cuối T${k.thang}; theo nhịp hiện tại cuối năm đạt ${phanTram(cs.du_bao_ty_le)} KHV`;
-  const khungA = h('div', { class: 'khung-bd' });
-  const theA = h('section', { class: 'the' }, h('h2', {}, tieuDeA),
-    h('p', { class: 'phu' }, `Lũy kế giải ngân, triệu đồng. Cuối tháng 6 là mốc nền. ${d.pham_vi.ghi_chu_tp}`),
-    chuGiaiLuyKe(d.duong_luy_ke.some(p => p.kb_tp != null)), khungA);
-
-  const khongDat = d.bang_thang.filter(t => t.trang_thai === 'khong_dat').map(t => `T${t.thang}`);
-  const tt = { dat: ['xanh', 'Đạt'], khong_dat: ['do', 'Không đạt'], dang_dien_ra: [null, 'Đang thực hiện'], chua_den: [null, 'Chưa đến'] };
-  const theThang = h('section', { class: 'the' },
-    h('h2', {}, khongDat.length ? `${khongDat.join(', ')} không đạt kế hoạch phường` : 'Các tháng đã qua đều đạt kế hoạch phường'),
-    h('p', { class: 'phu' }, 'Kế hoạch phường và thực hiện, lũy kế cuối tháng, triệu đồng'),
-    h('div', { class: 'cuon' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Tháng'), h('th', { class: 'so' }, 'KH phường'), h('th', { class: 'so' }, 'Thực hiện'), h('th', { class: 'so' }, 'Đạt KH'), h('th', {}, ''))),
-      h('tbody', {}, d.bang_thang.map(t => h('tr', { class: t.trang_thai === 'dang_dien_ra' ? 'dang-xem' : null },
-        h('td', {}, `T${t.thang}`), h('td', { class: 'so' }, trieu(t.kb_phuong)),
-        h('td', { class: 'so' }, t.thuc_hien == null ? '' : trieu(t.thuc_hien)), h('td', { class: 'so' }, t.dat_phuong == null ? '' : phanTram(t.dat_phuong)),
-        h('td', {}, tt[t.trang_thai][0] ? chip(tt[t.trang_thai][0], tt[t.trang_thai][1]) : h('span', { class: 'ghi-chu' }, tt[t.trang_thai][1]))))))),
-    h('p', { class: 'ghi-chu' }, `Kế hoạch trong tháng ${k.thang}: ${trieu(d.bang_thang.find(t => t.thang === k.thang)?.kh_trong_thang)} triệu; đã thực hiện ${trieu(d.bang_thang.find(t => t.thang === k.thang)?.th_trong_thang)} triệu.`));
-
-  // Bảng dự án có thanh tiến độ
-  const cham = d.du_an.filter(x => x.muc !== 'xanh'), tongThieu = cham.reduce((s, x) => s + x.thieu, 0);
-  let moRong = false;
-  const than = h('tbody');
-  const veHang = () => than.replaceChildren(...d.du_an.filter(x => moRong || x.muc !== 'xanh').map(x => h('tr', {},
-    h('td', {}, h('div', { class: 'ten-da' }, `${x.project_id} · ${x.ten}`, h('small', {}, x.so_dong_von > 1 ? `${x.so_dong_von} dòng vốn · KHV ${trieu(x.khv)}` : `KHV ${trieu(x.khv)}`))),
-    h('td', { class: 'cot-thanh' }, thanhTienDo(x)),
-    h('td', { class: 'so' }, phanTram(x.ty_le)),
-    h('td', { class: 'so' }, x.thieu ? trieu(x.thieu) : h('span', { class: 'mo' }, '0')),
-    h('td', { class: 'so' }, x.can_moi_tuan ? trieu(x.can_moi_tuan) : ''),
-    h('td', { class: 'so mo' }, trieu(x.nhip_gan_day)),
-    h('td', { class: 'so' }, phanTram(x.du_bao_ty_le, 0)),
-    h('td', {}, chipMuc(x.muc)))));
-  veHang();
-  const nutMo = h('button', { class: 'phu nho', onclick: () => { moRong = !moRong; veHang(); nutMo.textContent = moRong ? 'Thu gọn' : `Xem cả ${d.du_an.length - cham.length} dự án đạt tiến độ`; } },
-    `Xem cả ${d.du_an.length - cham.length} dự án đạt tiến độ`);
-  const theDuAn = h('section', { class: 'the' },
-    h('h2', {}, cham.length ? `${cham.length}/${d.du_an.length} dự án chậm so với kế hoạch phường T${k.thang}, tổng thiếu ${trieu(tongThieu)} triệu` : 'Mọi dự án đạt kế hoạch tháng'),
-    h('p', { class: 'phu' }, `Thanh: phần tô = đã giải ngân so với KHV; vạch đứng = mục tiêu lũy kế cuối T${k.thang}. Sắp theo mức cảnh báo, rồi theo số thiếu. Đơn vị: triệu đồng.`),
-    h('div', { class: 'cuon' }, h('table', {},
-      h('thead', {}, h('tr', {}, h('th', {}, 'Dự án'), h('th', {}, 'Tiến độ so với KHV'), h('th', { class: 'so' }, 'Đã GN'), h('th', { class: 'so' }, `Thiếu so với T${k.thang}`),
-        h('th', { class: 'so' }, 'Cần/tuần'), h('th', { class: 'so' }, 'Nhịp 4 tuần'), h('th', { class: 'so' }, 'Dự báo 31/12'), h('th', {}, 'Mức'))),
-      than)),
-    d.du_an.length > cham.length ? nutMo : null);
-
-  // Đề xuất giải pháp
+  // Nút giao việc cho từng nhóm đề xuất (chỉ ở app nội bộ).
   const viec = await api('GET', '/api/viec').catch(() => []);
   const daGiao = new Map(viec.filter(v => v.suggestion_key).map(v => [v.suggestion_key, v]));
-  // Gộp đề xuất theo dự án: mỗi dự án một thẻ, mức = mức nặng nhất; mức xanh để sau nút "xem thêm".
-  const bac = { do: 2, vang: 1, xanh: 0 }, nhomDx = new Map();
-  for (const x of d.de_xuat) {
-    const k = x.project_id ?? '*';
-    const g = nhomDx.get(k) || nhomDx.set(k, { ...x, ds: [] }).get(k);
-    g.ds.push(x); if (bac[x.muc] > bac[g.muc]) g.muc = x.muc;
-  }
-  const dsNhom = [...nhomDx.values()].sort((a, b) => (a.project_id === null ? -1 : b.project_id === null ? 1 : 0) || bac[b.muc] - bac[a.muc]);
-  const theNhom = g => {
+  const nutGiaoViec = g => {
     const chua = g.ds.filter(x => !daGiao.has(x.ma));
-    const nut = !chua.length ? h('span', { class: 'ghi-chu' }, `Đã giao · ${g.ds.map(x => S.dm.trang_thai_viec[daGiao.get(x.ma).status]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}`)
-      : quyen('giao_viec') ? h('button', { class: 'phu nho', onclick: async e => {
-        e.target.disabled = true;
-        try {
-          for (const x of chua) await api('POST', '/api/viec', { suggestion_key: x.ma, project_id: x.project_id, rule_id: x.quy_tac, problem: x.van_de, solution: x.giai_phap, owner: x.dau_moi, due: x.han });
-          e.target.replaceWith(h('span', { class: 'ghi-chu' }, `Đã giao ${chua.length} việc`));
-        } catch (er) { e.target.disabled = false; alert(er.message); }
-      } }, chua.length > 1 ? `Giao ${chua.length} việc` : 'Giao việc') : null;
-    return h('article', { class: `dx m-${g.muc}` },
-      h('div', { class: 'dx-dau' }, chipMuc(g.muc), h('b', {}, g.project_id ? `${g.project_id} · ${g.ten_du_an}` : `Toàn phạm vi · ${g.ten_du_an}`)),
-      g.ds.map(x => h('div', { class: 'dx-y' }, h('div', { class: 'dx-quy-tac' }, x.ten_quy_tac), h('p', {}, x.van_de), h('p', { class: 'gp' }, x.giai_phap))),
-      h('div', { class: 'dx-chan' }, h('span', {}, `Đầu mối: ${g.dau_moi}`), h('span', {}, `Hạn đề xuất: ${ngayVN(g.han)}`), nut));
+    if (!chua.length) return h('span', { class: 'ghi-chu' }, `Đã giao · ${g.ds.map(x => S.dm.trang_thai_viec[daGiao.get(x.ma).status]).filter((v, i, a) => a.indexOf(v) === i).join(', ')}`);
+    if (!quyen('giao_viec')) return null;
+    return h('button', { class: 'phu nho', onclick: async e => {
+      e.target.disabled = true;
+      try {
+        for (const x of chua) await api('POST', '/api/viec', { suggestion_key: x.ma, project_id: x.project_id, rule_id: x.quy_tac, problem: x.van_de, solution: x.giai_phap, owner: x.dau_moi, due: x.han });
+        e.target.replaceWith(h('span', { class: 'ghi-chu' }, `Đã giao ${chua.length} việc`));
+      } catch (er) { e.target.disabled = false; alert(er.message); }
+    } }, chua.length > 1 ? `Giao ${chua.length} việc` : 'Giao việc');
   };
-  const canXl = dsNhom.filter(g => g.muc !== 'xanh'), conLai = dsNhom.filter(g => g.muc === 'xanh');
-  const luoiDx = h('div', { class: 'de-xuat' }, canXl.map(theNhom));
-  const theDx = h('section', { class: 'the' },
-    h('h2', {}, canXl.length ? `${canXl.filter(g => g.project_id).length} dự án cần chỉ đạo xử lý trong tuần` : 'Không có dự án cần xử lý'),
-    h('p', { class: 'phu' }, `Đề xuất sinh theo bộ quy tắc phiên bản ${d.nguong.phien_ban}, chạy trên máy chủ của phường. Mỗi đề xuất ghi rõ con số đã dùng; cán bộ quyết định có giao việc hay không.`),
-    luoiDx,
-    conLai.length ? h('button', { class: 'phu nho', onclick: e => { conLai.forEach(g => luoiDx.append(theNhom(g))); e.target.remove(); } }, `Xem ${conLai.length} gợi ý tích cực (dự án có thể nhận thêm vốn)`) : null);
 
   // Thanh "Cập nhật từ Google Sheets": một bấm là tải bảng về ngay, cho qua một cửa nhập, vẽ lại bảng điều hành.
   const nhac = quyen('nhap_tep') ? await api('GET', '/api/dong-bo').then(ds => {
@@ -203,9 +134,7 @@ async function veDieuHanh() {
     if (S.thongBaoDongBo) { thanh.append(h('div', { class: 'ghi-chu dong-bo-kq', role: 'status' }, S.thongBaoDongBo)); S.thongBaoDongBo = ''; }
     return thanh;
   }).catch(() => null) : null;
-  noiDung.replaceChildren(...[nhac, loc, hang, h('div', { class: 'luoi-2' }, theA, theThang), theDuAn, theDx].filter(Boolean));
-  bieuDoLuyKe(khungA, d);
-  let hen; window.onresize = () => { clearTimeout(hen); hen = setTimeout(() => khungA.isConnected && bieuDoLuyKe(khungA, d), 150); };
+  veDieuHanhVao(noiDung, d, { chonLoc: (loai, id) => { S.loc[loai] = id; veDieuHanh(); }, phanTren: nhac, nutGiaoViec });
 }
 
 // ------------------------------------------------------------------------------ NHẬP LIỆU
