@@ -1,0 +1,10 @@
+# Dữ liệu thật không đưa vào kho mã
+data/*.sqlite*
+data/*.xlsx
+data/sao-luu/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+_to_delete/
+node_modules/
+.DS_Store

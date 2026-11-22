@@ -1,0 +1,15 @@
+{
+  "phien_ban": "1.0",
+  "ap_dung_tu": "2026-11-04",
+  "ghi_chu": "Ngưỡng của bộ quy tắc cảnh báo – đề xuất. Sửa số ở đây, tăng phien_ban, ghi lý do vào lich_su.",
+  "dat_ke_hoach_thang_do": 0.8,
+  "dat_ke_hoach_thang_vang": 0.95,
+  "so_tuan_dung_im": 3,
+  "du_bao_het_von_do": 0.8,
+  "du_bao_het_von_vang": 0.95,
+  "so_tuan_tinh_nhip": 4,
+  "bo_qua_duoi_dong": 1000000,
+  "lich_su": [
+    { "phien_ban": "1.0", "ngay": "2026-11-04", "ly_do": "Thiết lập ban đầu cho bản tối giản v1." }
+  ]
+}
